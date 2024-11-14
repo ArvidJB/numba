@@ -7,6 +7,8 @@ from numba.core.registry import DelayedRegistry
 from numba.np.ufunc import dufunc
 from numba.np.ufunc import gufunc
 
+from numba import config
+
 
 class _BaseVectorize(object):
 
@@ -29,6 +31,43 @@ class _BaseVectorize(object):
             return cls.target_registry[target]
         except KeyError:
             raise ValueError("Unsupported target: %s" % target)
+
+
+class _LazyBaseVectorize(object):
+    def __init__(self, deconame, func, lazy, **kws):
+        if config.DEBUG_LAZY:
+            self._prefix = "[lazy] %s: %s.%s:" % (deconame, func.__module__, func.__name__)
+            print(self._prefix, ", ".join(["%s=%r" % item for item in kws.items()]))
+        get_key, gen_sig = lazy
+        self._get_key = get_key
+        self._gen_sig = gen_sig
+        self._cache = dict()
+
+    def __call__(self, *args, **kwargs):
+        key = self._get_key(*args, **kwargs)
+        try:
+            func = self._cache[key]
+        except KeyError:
+            sig = self._gen_sig(key)
+            if config.DEBUG_LAZY:
+                print(self._prefix, "%r => %r" % (key, sig))
+            func = self._vectorize(sig)
+            self._cache[key] = func
+        return func(*args, **kwargs)
+
+
+class _LazyVectorize(_LazyBaseVectorize):
+    def __init__(self, func, lazy, **kws):
+        super(_LazyVectorize, self).__init__("vectorize", func, lazy, **kws)
+        self._vectorize = lambda sig: vectorize([sig], **kws)(func)
+
+
+class _LazyGUVectorize(_LazyBaseVectorize):
+    def __init__(self, func, signature, lazy, **kws):
+        super(_LazyGUVectorize, self).__init__("guvectorize", func, lazy, **kws)
+        self._vectorize = lambda sig: guvectorize([sig], signature, **kws)(func)
+        if config.DEBUG_LAZY:
+            print(self._prefix, signature)
 
 
 class Vectorize(_BaseVectorize):
@@ -117,6 +156,10 @@ def vectorize(ftylist_or_function=(), **kws):
             return a * b
 
     """
+    lazy = kws.pop('lazy', None)
+    if not (lazy is None or config.DISABLE_LAZY):
+        return lambda func: _LazyVectorize(func, lazy, **kws)
+
     if isinstance(ftylist_or_function, str):
         # Common user mistake
         ftylist = [ftylist_or_function]
@@ -192,6 +235,10 @@ def guvectorize(*args, **kwargs):
         signature = args[1]
     else:
         raise TypeError('guvectorize() takes one or two positional arguments')
+
+    lazy = kwargs.pop('lazy', None)
+    if not (lazy is None or config.DISABLE_LAZY):
+        return lambda func: _LazyGUVectorize(func, signature, lazy, **kwargs)
 
     if isinstance(ftylist, str):
         # Common user mistake

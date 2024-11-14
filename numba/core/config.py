@@ -281,6 +281,9 @@ class _EnvReloader(object):
         # JIT Debug flag to trigger IR instruction print
         DEBUG_JIT = _readenv("NUMBA_DEBUG_JIT", int, 0)
 
+        # Enable logging for lazy vectorized functions
+        DEBUG_LAZY = _readenv("NUMBA_DEBUG_LAZY", int, 0)
+
         # Enable debugging of front-end operation
         # (up to and including IR generation)
         DEBUG_FRONTEND = _readenv("NUMBA_DEBUG_FRONTEND", int, 0)
@@ -413,6 +416,9 @@ class _EnvReloader(object):
 
         # Disable jit for debugging
         DISABLE_JIT = _readenv("NUMBA_DISABLE_JIT", int, 0)
+
+        # Disable lazy vectorized functions, mostly for building caches
+        DISABLE_LAZY = _readenv("NUMBA_DISABLE_LAZY", int, 0)
 
         # choose parallel backend to use
         THREADING_LAYER_PRIORITY = _readenv(
